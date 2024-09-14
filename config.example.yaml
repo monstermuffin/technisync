@@ -1,0 +1,19 @@
+servers:
+  - name: server1
+    url: http://server1:5380
+    api_key: api_key
+  - name: server2
+    url: http://server2:5380
+    api_key: api_key
+  - name: server3
+    url: http://server3:5380
+    api_key: api_key
+
+sync_interval: 300
+db_path: dns_sync.db
+log_level: INFO
+sync_reverse_zones: true
+
+zones_to_sync:
+  - testzone.local
+  - testzone2.local
