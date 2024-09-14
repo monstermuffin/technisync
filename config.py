@@ -3,10 +3,12 @@ import os
 
 class Config:
     def __init__(self, config_path='config.yaml'):
-        with open(config_path, 'r') as config_file:
-            self.config = yaml.safe_load(config_file)
+        self.config = {}
+        if os.path.exists(config_path):
+            with open(config_path, 'r') as config_file:
+                self.config = yaml.safe_load(config_file) or {}
 
-        # env var override
+        # env override
         self.SERVERS = self._get_servers()
         self.SYNC_INTERVAL = int(os.getenv('SYNC_INTERVAL', self.config.get('sync_interval', 300)))
         

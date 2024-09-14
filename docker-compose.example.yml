@@ -2,8 +2,9 @@
 services:
   technisync:
     image: ghcr.io/monstermuffin/technisync:latest
+    container_name: technisync
     volumes:
-      - ./config.yaml:./config.yaml
+      # - ./config.yaml:./config.yaml
       - ./data:/data
     environment:
       - SYNC_INTERVAL=600
