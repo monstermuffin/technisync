@@ -19,7 +19,4 @@ RUN mkdir -p /data
 ENV DB_PATH=/data/dns_sync.db
 ENV CONFIG_PATH=/app/config.yaml
 
-RUN useradd -m appuser
-USER appuser
-
 CMD ["python", "main.py"]
