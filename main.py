@@ -1,5 +1,6 @@
 import logging
 import time
+import os
 from config import config
 from db_manager import DatabaseManager
 from dns_client import TechnitiumDNSClient
@@ -18,8 +19,10 @@ def main():
     logger = logging.getLogger(__name__)
     logger.info("Starting TechniSync")
 
+    os.makedirs(os.path.dirname(config.DB_PATH), exist_ok=True)
+
     db_manager = DatabaseManager(config.DB_PATH)
-    logger.info("Database initialized")
+    logger.info(f"Database initialized at {config.DB_PATH}")
 
     dns_clients = {server['name']: TechnitiumDNSClient(server['url'], server['api_key']) 
                    for server in config.SERVERS}
@@ -32,7 +35,7 @@ def main():
             time.sleep(config.SYNC_INTERVAL)
         except Exception as e:
             logger.error(f"Error during sync: {str(e)}", exc_info=True)
-            time.sleep(60)  # retry timer? prolly need to remove
+            time.sleep(60)
 
 if __name__ == "__main__":
     main()

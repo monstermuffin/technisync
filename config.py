@@ -9,7 +9,9 @@ class Config:
         # env var override
         self.SERVERS = self._get_servers()
         self.SYNC_INTERVAL = int(os.getenv('SYNC_INTERVAL', self.config.get('sync_interval', 300)))
-        self.DB_PATH = os.getenv('DB_PATH', self.config.get('db_path', 'dns_sync.db'))
+        
+        self.DB_PATH = os.getenv('DB_PATH', './data/dns_sync.db')
+        
         self.LOG_LEVEL = os.getenv('LOG_LEVEL', self.config.get('log_level', 'INFO'))
         self.SYNC_REVERSE_ZONES = os.getenv('SYNC_REVERSE_ZONES', str(self.config.get('sync_reverse_zones', False))).lower() == 'true'
         self.ZONES_TO_SYNC = os.getenv('ZONES_TO_SYNC', ','.join(self.config.get('zones_to_sync', []))).split(',')
