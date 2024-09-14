@@ -10,6 +10,22 @@ class SyncManager:
         self.dns_clients = dns_clients
         self.logger = logging.getLogger(__name__)
         self.changes = {server['name']: {} for server in config.SERVERS}
+        # records not needed for repl
+        self.excluded_record_types = [
+            'SOA',      
+            'NS',       
+            'RRSIG',    # DNSSEC signature
+            'NSEC',     # Next Secure record (for DNSSEC)
+            'NSEC3',    # NSEC version 3 (for DNSSEC)
+            'DNSKEY',   # DNS Public Key (for DNSSEC)
+            'DS',       # Delegation Signer (for DNSSEC)
+            'CDS',      # Child DS (for DNSSEC key rollovers)
+            'CDNSKEY',  # Child DNSKEY (for DNSSEC key rollovers)
+            'TSIG',     # Transaction Signature
+            'TKEY',     # Transaction Key - used for key exchange
+            'AXFR',     # Full zone transfer - might be required?
+            'IXFR'      # Incremental zone transfer - might be required?
+        ]
 
     def sync(self):
         for server in self.config.SERVERS:
@@ -55,8 +71,8 @@ class SyncManager:
             self.logger.error(f"Error syncing zone {zone_name} for server {server_name}: {str(e)}", exc_info=True)
 
     def process_records(self, server_name, zone_name, remote_records, local_records):
-        remote_dict = {self.record_key(r, zone_name): r for r in remote_records if r['type'] != 'SOA'}
-        local_dict = {self.record_key(r, zone_name): r for r in local_records if r['type'] != 'SOA'}
+        remote_dict = {self.record_key(r, zone_name): r for r in remote_records if r['type'] not in self.excluded_record_types}
+        local_dict = {self.record_key(r, zone_name): r for r in local_records if r['type'] not in self.excluded_record_types}
 
         for key, remote_record in remote_dict.items():
             if key not in local_dict:
@@ -101,8 +117,8 @@ class SyncManager:
             self.logger.error(f"Failed to get records for server {server_name} in zone {zone}: {str(e)}")
             return
 
-        current_dict = {self.record_key(r, zone): r for r in current_records if r['type'] not in ['SOA', 'NS']}
-        target_dict = {self.record_key(r, zone): r for r in target_records if r['type'] not in ['SOA', 'NS']}
+        current_dict = {self.record_key(r, zone): r for r in current_records if r['type'] not in self.excluded_record_types}
+        target_dict = {self.record_key(r, zone): r for r in target_records if r['type'] not in self.excluded_record_types}
 
         for key, record in target_dict.items():
             if key not in current_dict:
@@ -120,7 +136,7 @@ class SyncManager:
                 except Exception as e:
                     self.logger.error(f"Error updating record on server {server_name}: {str(e)}")
 
-        for key, current_record in current_dict.items(): # Delete records that are not in the target comp
+        for key, current_record in current_dict.items():
             if key not in target_dict:
                 self.logger.debug(f"Deleting record from server {server_name}: {current_record}")
                 try:
@@ -165,7 +181,7 @@ class SyncManager:
         for server in self.config.SERVERS:
             records = self.db_manager.get_records(server['name'], zone)
             for record in records:
-                if record['type'] != 'SOA':
+                if record['type'] not in self.excluded_record_types:
                     key = self.record_key(record, zone)
                     if key not in all_records:
                         all_records[key] = record
