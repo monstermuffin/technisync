@@ -1,5 +1,6 @@
 .env
 *.db
+.venv
 venv
 __pycache__*
 config.yaml
