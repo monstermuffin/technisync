@@ -1,10 +1,10 @@
 import logging
 import time
 import os
-from config import config
-from db_manager import DatabaseManager
-from dns_client import TechnitiumDNSClient
-from sync_manager import SyncManager
+from technisync.config import config
+from technisync.db_manager import DatabaseManager
+from technisync.dns_client import TechnitiumDNSClient
+from technisync.sync_manager import SyncManager
 
 def setup_logging():
     log_level = getattr(logging, config.LOG_LEVEL.upper(), None)
