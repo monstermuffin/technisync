@@ -28,22 +28,38 @@ class SyncManager:
         ]
 
     def sync(self):
+        synced_reverse_zones = set()
         for server in self.config.SERVERS:
             self.logger.info(f"Syncing records for server: {server['name']}")
             try:
                 zones = self.dns_clients[server['name']].get_zones()
-                self.logger.debug(f"Fetched zones for server {server['name']}: {zones}")
                 for zone in zones.get('zones', []):
                     if self.should_sync_zone(zone['name']):
                         self.sync_zone(server['name'], zone['name'])
+                        if self.is_reverse_zone(zone['name']):
+                            synced_reverse_zones.add(zone['name'])
                 
                 if self.config.SYNC_REVERSE_ZONES:
-                    self.sync_dhcp_scopes(server['name'])
+                    self.sync_dhcp_scopes(server['name'], synced_reverse_zones)
             except Exception as e:
                 self.logger.error(f"Error syncing server {server['name']}: {str(e)}", exc_info=True)
 
         self.propagate_changes()
         self.log_sync_summary()
+
+    def sync_dhcp_scopes(self, server_name, synced_reverse_zones):
+        try:
+            dhcp_scopes = self.dns_clients[server_name].get_dhcp_scopes()
+            for scope in dhcp_scopes.get('scopes', []):
+                reverse_zone = self.get_reverse_zone_from_network(scope['networkAddress'], scope['subnetMask'])
+                if reverse_zone and reverse_zone not in synced_reverse_zones:
+                    for srv in self.config.SERVERS:
+                        self.ensure_reverse_zone_exists(srv['name'], reverse_zone)
+                    self.db_manager.set_zone_owner(reverse_zone, server_name)
+                    self.sync_zone(server_name, reverse_zone)
+                    synced_reverse_zones.add(reverse_zone)
+        except Exception as e:
+            self.logger.error(f"Error syncing DHCP scopes for server {server_name}: {str(e)}", exc_info=True)
 
     def should_sync_zone(self, zone_name):
         if self.is_internal_zone(zone_name):
@@ -144,19 +160,6 @@ class SyncManager:
                     self.track_change(server_name, zone, 'delete', current_record)
                 except Exception as e:
                     self.logger.error(f"Error deleting record from server {server_name}: {str(e)}")
-
-    def sync_dhcp_scopes(self, server_name): # need this to get owner
-        try:
-            dhcp_scopes = self.dns_clients[server_name].get_dhcp_scopes()
-            for scope in dhcp_scopes.get('scopes', []):
-                reverse_zone = self.get_reverse_zone_from_network(scope['networkAddress'], scope['subnetMask'])
-                if reverse_zone:
-                    for srv in self.config.SERVERS:
-                        self.ensure_reverse_zone_exists(srv['name'], reverse_zone)
-                    self.db_manager.set_zone_owner(reverse_zone, server_name)
-                    self.sync_zone(server_name, reverse_zone)
-        except Exception as e:
-            self.logger.error(f"Error syncing DHCP scopes for server {server_name}: {str(e)}", exc_info=True)
 
     def get_reverse_zone_from_network(self, network_address, subnet_mask):
         try:
