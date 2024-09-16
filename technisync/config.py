@@ -1,5 +1,6 @@
 import yaml
 import os
+from .models import Server
 
 class Config:
     def __init__(self, config_path='config.yaml'):
@@ -23,11 +24,7 @@ class Config:
         servers = []
         yaml_servers = self.config.get('servers', [])
         for server in yaml_servers:
-            servers.append({
-                "name": server['name'],
-                "url": server['url'],
-                "api_key": server['api_key']
-            })
+            servers.append(Server(server['name'], server['url'], server['api_key']))
 
         i = 1
         while True:
@@ -36,16 +33,12 @@ class Config:
             if not url or not api_key:
                 break
             server_name = f"server{i}"
-            existing_server = next((s for s in servers if s['name'] == server_name), None)
+            existing_server = next((s for s in servers if s.name == server_name), None)
             if existing_server:
-                existing_server['url'] = url
-                existing_server['api_key'] = api_key
+                existing_server.url = url
+                existing_server.api_key = api_key
             else:
-                servers.append({
-                    "name": server_name,
-                    "url": url,
-                    "api_key": api_key
-                })
+                servers.append(Server(server_name, url, api_key))
             i += 1
 
         return servers

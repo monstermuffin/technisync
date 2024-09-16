@@ -1,8 +1,9 @@
 import sqlite3
 import json
 from datetime import datetime, timezone
+from .models import DNSRecord, ZoneOwnership
 
-class DatabaseManager: # fixed chatgpt database nonsense
+class DatabaseManager:
     def __init__(self, db_path):
         self.conn = sqlite3.connect(db_path)
         self.cursor = self.conn.cursor()
@@ -60,12 +61,12 @@ class DatabaseManager: # fixed chatgpt database nonsense
         ''', (server_name, zone_name))
         records = self.cursor.fetchall()
         return [
-            {
-                'name': record[0],
-                'type': record[1],
-                'ttl': record[2],
-                'rData': json.loads(record[3])
-            }
+            DNSRecord(
+                name=record[0],
+                record_type=record[1],
+                ttl=record[2],
+                rdata=json.loads(record[3])
+            )
             for record in records
         ]
 
@@ -78,10 +79,10 @@ class DatabaseManager: # fixed chatgpt database nonsense
         ''', (
             server_name,
             zone_name,
-            record['name'],
-            record['type'],
-            record['ttl'],
-            json.dumps(record['rData']),
+            record.name,
+            record.type,
+            record.ttl,
+            json.dumps(record.rdata),
             now,
             now
         ))
@@ -94,13 +95,13 @@ class DatabaseManager: # fixed chatgpt database nonsense
             SET ttl = ?, rdata = ?, updated_at = ?
             WHERE server = ? AND zone = ? AND name = ? AND type = ? AND deleted_at IS NULL
         ''', (
-            record['ttl'],
-            json.dumps(record['rData']),
+            record.ttl,
+            json.dumps(record.rdata),
             now,
             server_name,
             zone_name,
-            record['name'],
-            record['type']
+            record.name,
+            record.type
         ))
         self.conn.commit()
 
@@ -114,8 +115,8 @@ class DatabaseManager: # fixed chatgpt database nonsense
             now,
             server_name,
             zone_name,
-            record['name'],
-            record['type']
+            record.name,
+            record.type
         ))
         self.conn.commit()
 
@@ -125,16 +126,33 @@ class DatabaseManager: # fixed chatgpt database nonsense
         return result[0] if result else None
 
     def set_zone_owner(self, zone, owner):
-        now = datetime.now(timezone.utc)
+        zone_ownership = ZoneOwnership(zone, owner)
         self.cursor.execute('''
             INSERT OR REPLACE INTO zone_ownership (zone, owner, created_at)
             VALUES (?, ?, ?)
-        ''', (zone, owner, now))
+        ''', (zone_ownership.zone, zone_ownership.owner, zone_ownership.created_at))
         self.conn.commit()
 
     def get_all_zones(self):
         self.cursor.execute('SELECT DISTINCT zone FROM dns_records')
         return [row[0] for row in self.cursor.fetchall()]
+
+    def get_deleted_records(self, server_name, zone_name):
+        self.cursor.execute('''
+            SELECT name, type, ttl, rdata
+            FROM dns_records
+            WHERE server = ? AND zone = ? AND deleted_at IS NOT NULL
+        ''', (server_name, zone_name))
+        records = self.cursor.fetchall()
+        return [
+            DNSRecord(
+                name=record[0],
+                record_type=record[1],
+                ttl=record[2],
+                rdata=json.loads(record[3])
+            )
+            for record in records
+        ]
 
     def __del__(self):
         self.conn.close()
