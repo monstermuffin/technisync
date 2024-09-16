@@ -1,6 +1,6 @@
 import logging
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 import ipaddress
 
 class SyncManager:
@@ -91,8 +91,8 @@ class SyncManager:
         local_dict = {self.record_key(r, zone_name): r for r in local_records if r['type'] not in self.excluded_record_types}
 
         for key, remote_record in remote_dict.items():
-            if key not in local_dict:
-                self.logger.debug(f"Adding new record for {server_name} in zone {zone_name}: {remote_record}")
+            if key not in local_dict or local_dict[key].get('deleted_at'):
+                self.logger.debug(f"Adding previously deleted record for {server_name} in zone {zone_name}: {remote_record}")
                 self.db_manager.add_record(server_name, zone_name, remote_record)
                 self.track_change(server_name, zone_name, 'add', remote_record)
             elif not self.records_equal(remote_record, local_dict[key]):

@@ -1,6 +1,6 @@
 import sqlite3
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 class DatabaseManager: # fixed chatgpt database nonsense
     def __init__(self, db_path):
@@ -70,10 +70,11 @@ class DatabaseManager: # fixed chatgpt database nonsense
         ]
 
     def add_record(self, server_name, zone_name, record):
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         self.cursor.execute('''
-            INSERT INTO dns_records (server, zone, name, type, ttl, rdata, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO dns_records 
+            (server, zone, name, type, ttl, rdata, created_at, updated_at, deleted_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
         ''', (
             server_name,
             zone_name,
@@ -87,7 +88,7 @@ class DatabaseManager: # fixed chatgpt database nonsense
         self.conn.commit()
 
     def update_record(self, server_name, zone_name, record):
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         self.cursor.execute('''
             UPDATE dns_records
             SET ttl = ?, rdata = ?, updated_at = ?
@@ -104,7 +105,7 @@ class DatabaseManager: # fixed chatgpt database nonsense
         self.conn.commit()
 
     def delete_record(self, server_name, zone_name, record):
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         self.cursor.execute('''
             UPDATE dns_records
             SET deleted_at = ?
@@ -124,7 +125,7 @@ class DatabaseManager: # fixed chatgpt database nonsense
         return result[0] if result else None
 
     def set_zone_owner(self, zone, owner):
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         self.cursor.execute('''
             INSERT OR REPLACE INTO zone_ownership (zone, owner, created_at)
             VALUES (?, ?, ?)
