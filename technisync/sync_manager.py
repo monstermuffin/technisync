@@ -99,9 +99,6 @@ class SyncManager:
                 self.logger.debug(f"Marking record as deleted for {server_name} in zone {zone_name}: {local_record}")
                 self.db_manager.mark_record_as_deleted(server_name, zone_name, local_record)
                 self.track_change(server_name, zone_name, 'delete', local_record)
-                self.logger.debug(f"Marking record as deleted for {server_name} in zone {zone_name}: {local_record}")
-                self.db_manager.mark_record_as_deleted(server_name, zone_name, local_record)
-                self.track_change(server_name, zone_name, 'delete', local_record)
 
     def propagate_changes(self):
         self.logger.info("Propagating changes across all servers")
@@ -181,12 +178,6 @@ class SyncManager:
                     self.track_change(server_name, zone, 'update', record)
                 except Exception as e:
                     self.logger.error(f"Error updating record on server {server_name}: {str(e)}")
-                self.logger.debug(f"Updating record on server {server_name}: {record}")
-                try:
-                    self.dns_clients[server_name].update_record(zone, record.name, record.type, current_dict[key].rdata, record.rdata)
-                    self.track_change(server_name, zone, 'update', record)
-                except Exception as e:
-                    self.logger.error(f"Error updating record on server {server_name}: {str(e)}")
 
     def sync_dhcp_scopes(self, server_name):
         try:
@@ -228,28 +219,27 @@ class SyncManager:
         self.changes[server_name][zone_name][change_type] += 1
 
     def log_sync_summary(self):
-        self.logger.info("=== Sync Summary ===")
-        changes_made = False
-        for server_name, server_changes in self.changes.items():
-            if server_changes:
-                changes_made = True
-                self.logger.info(f"Changes for server {server_name}:")
-                for zone, changes in server_changes.items():
-                    self.logger.info(f"  Zone {zone}:")
-                    for change_type, count in changes.items():
-                        if count > 0:
-                            self.logger.info(f"    {change_type.capitalize()}: {count}")
-            else:
-                self.logger.info(f"No changes for server {server_name}")
-        
-        if not changes_made:
-            self.logger.info("No changes were made during this sync.")
-        
-        self.logger.info("=== End of Sync Summary ===")
-        self.changes = {server.name: {} for server in self.config.SERVERS}
-        
-    @staticmethod
-    def record_key(record):
+            self.logger.info("=== Sync Summary ===")
+            changes_made = False
+            for server_name, server_changes in self.changes.items():
+                if server_changes:
+                    changes_made = True
+                    self.logger.info(f"Changes for server {server_name}:")
+                    for zone, changes in server_changes.items():
+                        self.logger.info(f"  Zone {zone}:")
+                        for change_type, count in changes.items():
+                            if count > 0:
+                                self.logger.info(f"    {change_type.capitalize()}: {count}")
+                else:
+                    self.logger.info(f"No changes for server {server_name}")
+            
+            if not changes_made:
+                self.logger.info("No changes were made during this sync.")
+            
+            self.logger.info("=== End of Sync Summary ===")
+            self.changes = {server.name: {} for server in self.config.SERVERS}
+
+    def record_key(self, record):
         return (record.name, record.type, json.dumps(record.rdata, sort_keys=True))
 
     def is_valid_record_for_server(self, server_name, record):
