@@ -1,6 +1,7 @@
 import requests
 import logging
 import json
+from requests.exceptions import RequestException, Timeout
 
 class TechnitiumDNSClient:
     def __init__(self, server_url, api_key):
@@ -25,11 +26,17 @@ class TechnitiumDNSClient:
                 raise Exception(f"API error: {data.get('errorMessage', 'Unknown error')}")
             
             return data.get('response', {})
-        except requests.RequestException as e:
-            self.logger.error(f"Error making request to {url}: {e}")
+        except RequestException as e:
+            self.logger.error(f"Network error in request to {url}: {e}")
+            raise
+        except Timeout as e:
+            self.logger.error(f"Timeout error in request to {url}: {e}")
             raise
         except json.JSONDecodeError as e:
             self.logger.error(f"Error decoding JSON response from {url}: {e}")
+            raise
+        except KeyError as e:
+            self.logger.error(f"Unexpected response structure from {url}: {e}")
             raise
         except Exception as e:
             self.logger.error(f"Unexpected error in request to {url}: {e}")

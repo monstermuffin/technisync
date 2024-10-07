@@ -20,6 +20,8 @@ class Config:
         self.ZONES_TO_SYNC = os.getenv('ZONES_TO_SYNC', ','.join(self.config.get('zones_to_sync', []))).split(',')
         self.ZONES_TO_SYNC = [zone.strip() for zone in self.ZONES_TO_SYNC if zone.strip()]
 
+        self.validate_config()
+
     def _get_servers(self):
         servers = []
         yaml_servers = self.config.get('servers', [])
@@ -42,6 +44,15 @@ class Config:
             i += 1
 
         return servers
+
+    def validate_config(self):
+        if not self.SERVERS:
+            raise ValueError("No servers configured")
+        for server in self.SERVERS:
+            if not server.url or not server.api_key:
+                raise ValueError(f"Invalid configuration for server {server.name}")
+        if self.SYNC_INTERVAL <= 0:
+            raise ValueError("SYNC_INTERVAL must be a positive integer")
 
     @classmethod
     def load(cls):

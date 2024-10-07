@@ -5,9 +5,15 @@ from .models import DNSRecord, ZoneOwnership
 
 class DatabaseManager:
     def __init__(self, db_path):
-        self.conn = sqlite3.connect(db_path)
-        self.cursor = self.conn.cursor()
+        self.db_path = db_path
+        self.conn = None
+        self.cursor = None
+        self.connect()
         self.check_and_create_tables()
+
+    def connect(self):
+        self.conn = sqlite3.connect(self.db_path)
+        self.cursor = self.conn.cursor()
 
     def check_and_create_tables(self):
         self.check_and_create_dns_records_table()
@@ -17,7 +23,7 @@ class DatabaseManager:
         self.cursor.execute("PRAGMA table_info(dns_records)")
         columns = [column[1] for column in self.cursor.fetchall()]
         
-        required_columns = ['id', 'server', 'zone', 'name', 'type', 'ttl', 'rdata', 'created_at', 'updated_at', 'deleted_at']
+        required_columns = ['id', 'server', 'zone', 'name', 'type', 'ttl', 'rdata', 'created_at', 'updated_at', 'last_operation']
         
         if set(required_columns).issubset(set(columns)):
             return  
@@ -37,7 +43,7 @@ class DatabaseManager:
                 rdata TEXT,
                 created_at TIMESTAMP,
                 updated_at TIMESTAMP,
-                deleted_at TIMESTAMP
+                last_operation TEXT
             )
         ''')
         self.conn.commit()
@@ -55,9 +61,9 @@ class DatabaseManager:
 
     def get_records(self, server_name, zone_name):
         self.cursor.execute('''
-            SELECT name, type, ttl, rdata
+            SELECT name, type, ttl, rdata, last_operation
             FROM dns_records
-            WHERE server = ? AND zone = ? AND deleted_at IS NULL
+            WHERE server = ? AND zone = ? AND last_operation != 'DELETE'
         ''', (server_name, zone_name))
         records = self.cursor.fetchall()
         return [
@@ -70,12 +76,12 @@ class DatabaseManager:
             for record in records
         ]
 
-    def add_record(self, server_name, zone_name, record):
+    def add_or_update_record(self, server_name, zone_name, record):
         now = datetime.now(timezone.utc)
         self.cursor.execute('''
             INSERT OR REPLACE INTO dns_records 
-            (server, zone, name, type, ttl, rdata, created_at, updated_at, deleted_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
+            (server, zone, name, type, ttl, rdata, created_at, updated_at, last_operation)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ADD')
         ''', (
             server_name,
             zone_name,
@@ -88,15 +94,13 @@ class DatabaseManager:
         ))
         self.conn.commit()
 
-    def update_record(self, server_name, zone_name, record):
+    def delete_record(self, server_name, zone_name, record):
         now = datetime.now(timezone.utc)
         self.cursor.execute('''
             UPDATE dns_records
-            SET ttl = ?, rdata = ?, updated_at = ?
-            WHERE server = ? AND zone = ? AND name = ? AND type = ? AND deleted_at IS NULL
+            SET updated_at = ?, last_operation = 'DELETE'
+            WHERE server = ? AND zone = ? AND name = ? AND type = ?
         ''', (
-            record.ttl,
-            json.dumps(record.rdata),
             now,
             server_name,
             zone_name,
@@ -105,20 +109,22 @@ class DatabaseManager:
         ))
         self.conn.commit()
 
-    def delete_record(self, server_name, zone_name, record):
-        now = datetime.now(timezone.utc)
+    def get_deleted_records(self, server_name, zone_name):
         self.cursor.execute('''
-            UPDATE dns_records
-            SET deleted_at = ?
-            WHERE server = ? AND zone = ? AND name = ? AND type = ? AND deleted_at IS NULL
-        ''', (
-            now,
-            server_name,
-            zone_name,
-            record.name,
-            record.type
-        ))
-        self.conn.commit()
+            SELECT name, type, ttl, rdata
+            FROM dns_records
+            WHERE server = ? AND zone = ? AND last_operation = 'DELETE'
+        ''', (server_name, zone_name))
+        records = self.cursor.fetchall()
+        return [
+            DNSRecord(
+                name=record[0],
+                record_type=record[1],
+                ttl=record[2],
+                rdata=json.loads(record[3])
+            )
+            for record in records
+        ]
 
     def get_zone_owner(self, zone):
         self.cursor.execute('SELECT owner FROM zone_ownership WHERE zone = ?', (zone,))
@@ -137,22 +143,33 @@ class DatabaseManager:
         self.cursor.execute('SELECT DISTINCT zone FROM dns_records')
         return [row[0] for row in self.cursor.fetchall()]
 
-    def get_deleted_records(self, server_name, zone_name):
+    def mark_record_as_deleted(self, server_name, zone_name, record):
+        now = datetime.now(timezone.utc)
         self.cursor.execute('''
-            SELECT name, type, ttl, rdata
-            FROM dns_records
-            WHERE server = ? AND zone = ? AND deleted_at IS NOT NULL
-        ''', (server_name, zone_name))
-        records = self.cursor.fetchall()
-        return [
-            DNSRecord(
-                name=record[0],
-                record_type=record[1],
-                ttl=record[2],
-                rdata=json.loads(record[3])
-            )
-            for record in records
-        ]
+            INSERT OR REPLACE INTO dns_records
+            (server, zone, name, type, ttl, rdata, created_at, updated_at, last_operation)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'DELETE')
+        ''', (
+            server_name,
+            zone_name,
+            record.name,
+            record.type,
+            record.ttl,
+            json.dumps(record.rdata),
+            now,
+            now
+        ))
+        self.conn.commit()
+
+    def close(self):
+        if self.conn:
+            self.conn.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
 
     def __del__(self):
-        self.conn.close()
+        self.close()
