@@ -56,8 +56,16 @@ class SyncManager:
     def is_valid_record_for_server(self, server_name, record):
         if record.type in ('A', 'AAAA'):
             reverse_zone_owner = self.get_reverse_zone_owner(record.rdata['ipAddress'])
-            return reverse_zone_owner is None or reverse_zone_owner == server_name
+            return reverse_zone_owner is None or reverse_zone_owner == server_name or self.is_replicated_record(server_name, record)
         return True
+
+    def is_replicated_record(self, server_name, record):
+        for other_server in self.config.SERVERS:
+            if other_server.name != server_name:
+                other_server_records = self.db_manager.get_records(other_server.name, record.name.split('.', 1)[1])
+                if any(r for r in other_server_records if r == record):
+                    return True
+        return False
 
     def process_records(self, server_name, zone_name, remote_records, local_records, deleted_records):
         remote_dict = {self.record_key(DNSRecord.from_dict(r)): DNSRecord.from_dict(r) 
@@ -241,12 +249,6 @@ class SyncManager:
 
     def record_key(self, record):
         return (record.name, record.type, json.dumps(record.rdata, sort_keys=True))
-
-    def is_valid_record_for_server(self, server_name, record):
-        if record.type in ('A', 'AAAA'):
-            reverse_zone_owner = self.get_reverse_zone_owner(record.rdata['ipAddress'])
-            return reverse_zone_owner is None or reverse_zone_owner == server_name
-        return True
 
     def get_reverse_zone_owner(self, ip_address):
         reverse_zone = self.ip_to_reverse_zone(ip_address)
