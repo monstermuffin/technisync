@@ -53,20 +53,6 @@ class SyncManager:
         except Exception as e:
             self.logger.error(f"Error syncing zone {zone_name} for server {server_name}: {str(e)}", exc_info=True)
 
-    def is_valid_record_for_server(self, server_name, record):
-        if record.type in ('A', 'AAAA'):
-            reverse_zone_owner = self.get_reverse_zone_owner(record.rdata['ipAddress'])
-            return reverse_zone_owner is None or reverse_zone_owner == server_name or self.is_replicated_record(server_name, record)
-        return True
-
-    def is_replicated_record(self, server_name, record):
-        for other_server in self.config.SERVERS:
-            if other_server.name != server_name:
-                other_server_records = self.db_manager.get_records(other_server.name, record.name.split('.', 1)[1])
-                if any(r for r in other_server_records if r == record):
-                    return True
-        return False
-
     def process_records(self, server_name, zone_name, remote_records, local_records, deleted_records):
         remote_dict = {self.record_key(DNSRecord.from_dict(r)): DNSRecord.from_dict(r) 
                     for r in remote_records if r['type'] not in self.excluded_record_types}
@@ -74,21 +60,6 @@ class SyncManager:
         deleted_dict = {self.record_key(r): r for r in deleted_records}
 
         for key, remote_record in remote_dict.items():
-            if not self.is_valid_record_for_server(server_name, remote_record):
-                self.logger.warning(f"Invalid {remote_record.type} record found on {server_name} in zone {zone_name}: {remote_record}")
-                self.db_manager.mark_record_as_deleted(server_name, zone_name, remote_record)
-                self.track_change(server_name, zone_name, 'delete', remote_record)
-                
-                if remote_record.type in ('A', 'AAAA'):
-                    ptr_zone = self.ip_to_reverse_zone(remote_record.rdata['ipAddress'])
-                    if ptr_zone:
-                        ptr_name = ipaddress.ip_address(remote_record.rdata['ipAddress']).reverse_pointer
-                        ptr_record = DNSRecord(name=ptr_name, record_type='PTR', ttl=remote_record.ttl, rdata={'ptrName': remote_record.name})
-                        self.db_manager.mark_record_as_deleted(server_name, ptr_zone, ptr_record)
-                        self.track_change(server_name, ptr_zone, 'delete', ptr_record)
-                
-                continue
-
             if key in deleted_dict:
                 self.logger.debug(f"Deleting previously deleted record on {server_name} in zone {zone_name}: {remote_record}")
                 self.dns_clients[server_name].delete_record(zone_name, remote_record.name, remote_record.type, remote_record.rdata)
@@ -154,24 +125,6 @@ class SyncManager:
         for key, record in target_dict.items():
             if key in deleted_dict:
                 continue
-            if record.type in ('A', 'AAAA'):
-                reverse_zone_owner = self.get_reverse_zone_owner(record.rdata['ipAddress'])
-                if reverse_zone_owner and reverse_zone_owner != server_name:
-                    if key not in current_dict:
-                        self.logger.debug(f"Adding A/AAAA record to server {server_name}: {record}")
-                        try:
-                            self.dns_clients[server_name].add_record(zone, record.name, record.type, record.ttl, record.rdata)
-                            self.track_change(server_name, zone, 'add', record)
-                        except Exception as e:
-                            self.logger.error(f"Error adding A/AAAA record to server {server_name}: {str(e)}")
-                    elif record != current_dict[key]:
-                        self.logger.debug(f"Updating A/AAAA record on server {server_name}: {record}")
-                        try:
-                            self.dns_clients[server_name].update_record(zone, record.name, record.type, current_dict[key].rdata, record.rdata)
-                            self.track_change(server_name, zone, 'update', record)
-                        except Exception as e:
-                            self.logger.error(f"Error updating A/AAAA record on server {server_name}: {str(e)}")
-                    continue
             if key not in current_dict:
                 self.logger.debug(f"Adding record to server {server_name}: {record}")
                 try:
@@ -195,7 +148,6 @@ class SyncManager:
                 if reverse_zone:
                     for srv in self.config.SERVERS:
                         self.ensure_reverse_zone_exists(srv.name, reverse_zone)
-                    self.db_manager.set_zone_owner(reverse_zone, server_name)
                     self.sync_zone(server_name, reverse_zone)
         except Exception as e:
             self.logger.error(f"Error syncing DHCP scopes for server {server_name}: {str(e)}", exc_info=True)
@@ -217,8 +169,7 @@ class SyncManager:
             for record in records:
                 if record.type not in self.excluded_record_types:
                     key = self.record_key(record)
-                    if key not in all_records:
-                        all_records[key] = record
+                    all_records[key] = record
         return list(all_records.values())
 
     def track_change(self, server_name, zone_name, change_type, record):
