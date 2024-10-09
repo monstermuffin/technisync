@@ -2,11 +2,15 @@ import requests
 import logging
 import json
 from requests.exceptions import RequestException, Timeout
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class TechnitiumDNSClient:
-    def __init__(self, server_url, api_key):
+    def __init__(self, server_url, api_key, verify_ssl=False):
         self.server_url = server_url
         self.api_key = api_key
+        self.verify_ssl = verify_ssl
         self.logger = logging.getLogger(__name__)
 
     def _make_request(self, endpoint, params=None, method='GET'):
@@ -16,9 +20,9 @@ class TechnitiumDNSClient:
         
         try:
             if method == 'GET':
-                response = requests.get(url, params=params)
+                response = requests.get(url, params=params, verify=self.verify_ssl)
             elif method == 'POST':
-                response = requests.post(url, data=params)
+                response = requests.post(url, data=params, verify=self.verify_ssl)
             response.raise_for_status()
             data = response.json()
             
