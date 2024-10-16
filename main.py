@@ -16,9 +16,9 @@ def main():
 
     with DatabaseManager(config.DB_PATH) as db_manager:
         logger.info(f"Database initialized at {config.DB_PATH}")
+        db_manager.check_and_create_tables()
 
-        dns_clients = {server.name: TechnitiumDNSClient(server.url, server.api_key) 
-                       for server in config.SERVERS}
+        dns_clients = {server.name: TechnitiumDNSClient(server.url, server.api_key) for server in config.SERVERS}
         sync_manager = SyncManager(config, db_manager, dns_clients)
 
         while True:

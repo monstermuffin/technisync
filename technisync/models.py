@@ -49,6 +49,12 @@ class Server:
     def __repr__(self):
         return f"Server(name='{self.name}', url='{self.url}')"
 
+class ZoneSync:
+    def __init__(self, zone, server, last_synced):
+        self.zone = zone
+        self.server = server
+        self.last_synced = last_synced
+        
 class ZoneOwnership:
     def __init__(self, zone, owner, created_at=None):
         self.zone = zone

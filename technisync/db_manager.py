@@ -18,6 +18,7 @@ class DatabaseManager:
     def check_and_create_tables(self):
         self.check_and_create_dns_records_table()
         self.check_and_create_zone_ownership_table()
+        self.check_and_create_zone_sync_table()
 
     def check_and_create_dns_records_table(self):
         self.cursor.execute("PRAGMA table_info(dns_records)")
@@ -161,6 +162,34 @@ class DatabaseManager:
         ))
         self.conn.commit()
 
+    def check_and_create_zone_sync_table(self):
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS zone_sync (
+                id INTEGER PRIMARY KEY,
+                zone TEXT,
+                server TEXT,
+                last_synced TIMESTAMP,
+                UNIQUE(zone, server)
+            )
+        ''')
+        self.conn.commit()
+
+    def update_zone_sync(self, zone, server):
+        now = datetime.now(timezone.utc)
+        self.cursor.execute('''
+            INSERT OR REPLACE INTO zone_sync (zone, server, last_synced)
+            VALUES (?, ?, ?)
+        ''', (zone, server, now))
+        self.conn.commit()
+
+    def get_zone_sync(self, zone, server):
+        self.cursor.execute('''
+            SELECT last_synced FROM zone_sync
+            WHERE zone = ? AND server = ?
+        ''', (zone, server))
+        result = self.cursor.fetchone()
+        return result[0] if result else None
+    
     def close(self):
         if self.conn:
             self.conn.close()

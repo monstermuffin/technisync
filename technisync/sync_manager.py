@@ -11,6 +11,7 @@ class SyncManager:
         self.dns_clients = dns_clients
         self.logger = logging.getLogger(__name__)
         self.changes = {server.name: {} for server in config.SERVERS}
+        self.ttl_threshold = 300
         self.excluded_record_types = [
             'SOA', 'NS', 'RRSIG', 'NSEC', 'NSEC3', 'DNSKEY', 'DS',
             'CDS', 'CDNSKEY', 'TSIG', 'TKEY', 'AXFR', 'IXFR'
@@ -44,18 +45,19 @@ class SyncManager:
     def sync_zone(self, server_name, zone_name):
         self.logger.info(f"Syncing zone {zone_name} for server {server_name}")
         try:
+            last_synced = self.db_manager.get_zone_sync(zone_name, server_name)
             remote_records = self.dns_clients[server_name].get_records(zone_name)['records']
             self.logger.debug(f"Fetched {len(remote_records)} remote records for zone {zone_name} on server {server_name}")
             local_records = self.db_manager.get_records(server_name, zone_name)
             deleted_records = self.db_manager.get_deleted_records(server_name, zone_name)
             self.logger.debug(f"Fetched {len(local_records)} local records and {len(deleted_records)} deleted records for zone {zone_name} on server {server_name}")
             self.process_records(server_name, zone_name, remote_records, local_records, deleted_records)
+            self.db_manager.update_zone_sync(zone_name, server_name)
         except Exception as e:
             self.logger.error(f"Error syncing zone {zone_name} for server {server_name}: {str(e)}", exc_info=True)
 
     def process_records(self, server_name, zone_name, remote_records, local_records, deleted_records):
-        remote_dict = {self.record_key(DNSRecord.from_dict(r)): DNSRecord.from_dict(r) 
-                    for r in remote_records if r['type'] not in self.excluded_record_types}
+        remote_dict = {self.record_key(DNSRecord.from_dict(r)): DNSRecord.from_dict(r) for r in remote_records if r['type'] not in self.excluded_record_types}
         local_dict = {self.record_key(r): r for r in local_records if r.type not in self.excluded_record_types}
         deleted_dict = {self.record_key(r): r for r in deleted_records}
 
@@ -65,13 +67,11 @@ class SyncManager:
                 self.dns_clients[server_name].delete_record(zone_name, remote_record.name, remote_record.type, remote_record.rdata)
                 self.track_change(server_name, zone_name, 'delete', remote_record)
             elif key not in local_dict:
-                self.logger.debug(f"Adding record for {server_name} in zone {zone_name}: {remote_record}")
+                self.logger.debug(f"Adding record to local database for {server_name} in zone {zone_name}: {remote_record}")
                 self.db_manager.add_or_update_record(server_name, zone_name, remote_record)
-                self.track_change(server_name, zone_name, 'add', remote_record)
-            elif remote_record != local_dict[key]:
-                self.logger.debug(f"Updating record for {server_name} in zone {zone_name}: {remote_record}")
+            elif not self.records_equal(remote_record, local_dict[key]):
+                self.logger.debug(f"Updating record in local database for {server_name} in zone {zone_name}: {remote_record}")
                 self.db_manager.add_or_update_record(server_name, zone_name, remote_record)
-                self.track_change(server_name, zone_name, 'update', remote_record)
 
         for key, local_record in local_dict.items():
             if key not in remote_dict and key not in deleted_dict:
@@ -108,8 +108,7 @@ class SyncManager:
             self.logger.error(f"Failed to get records for server {server_name} in zone {zone}: {str(e)}")
             return
 
-        current_dict = {self.record_key(DNSRecord.from_dict(r)): DNSRecord.from_dict(r) 
-                        for r in current_records if r['type'] not in self.excluded_record_types}
+        current_dict = {self.record_key(DNSRecord.from_dict(r)): DNSRecord.from_dict(r) for r in current_records if r['type'] not in self.excluded_record_types}
         target_dict = {self.record_key(r): r for r in target_records if r.type not in self.excluded_record_types}
         deleted_dict = {self.record_key(r): r for r in deleted_records}
 
@@ -132,7 +131,7 @@ class SyncManager:
                     self.track_change(server_name, zone, 'add', record)
                 except Exception as e:
                     self.logger.error(f"Error adding record to server {server_name}: {str(e)}")
-            elif record != current_dict[key]:
+            elif not self.records_equal(record, current_dict[key]):
                 self.logger.debug(f"Updating record on server {server_name}: {record}")
                 try:
                     self.dns_clients[server_name].update_record(zone, record.name, record.type, current_dict[key].rdata, record.rdata)
@@ -200,6 +199,10 @@ class SyncManager:
 
     def record_key(self, record):
         return (record.name, record.type, json.dumps(record.rdata, sort_keys=True))
+    
+    def records_equal(self, record1, record2):
+        return (self.record_key(record1) == self.record_key(record2) and
+                abs(record1.ttl - record2.ttl) < self.ttl_threshold)
 
     def get_reverse_zone_owner(self, ip_address):
         reverse_zone = self.ip_to_reverse_zone(ip_address)
