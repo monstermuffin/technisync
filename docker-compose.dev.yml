@@ -1,0 +1,55 @@
+---
+services:
+  technisync:
+    # image: ghcr.io/monstermuffin/technisync:latest
+    container_name: technisync_dev
+    build:
+      context: .
+    volumes:
+      # - ./config.yaml:/app/config.yaml
+      - ./data:/data
+    environment:
+      SYNC_INTERVAL: 600
+      DB_PATH: /data/dns_sync.db
+      LOG_LEVEL: INFO
+      SYNC_REVERSE_ZONES: true
+      ZONES_TO_SYNC: example.com,example.org
+      SERVER1_URL: http://technitium_1:5380
+      SERVER1_API_KEY: api_key
+      SERVER2_URL: http://technitium_2:5380
+      SERVER2_API_KEY: api_key
+    restart: unless-stopped
+
+  technitium_1:
+    image: technitium/dns-server:latest
+    restart: unless-stopped
+    sysctls:
+      - net.ipv4.ip_local_port_range=1024 65000
+    ports:
+      - "5380:5380/tcp" # Web console (HTTP)
+      - "53:53/udp"     # DNS
+      - "53:53/tcp"     # DNS
+    environment:
+      DNS_SERVER_DOMAIN: technitium_1      # The primary domain name used by this DNS Server to identify itself.
+      DNS_SERVER_ADMIN_PASSWORD: password  # DNS web console admin user password.
+    volumes:
+      - technitium_1_config:/etc/dns
+
+  technitium_2:
+    image: technitium/dns-server:latest
+    restart: unless-stopped
+    sysctls:
+      - net.ipv4.ip_local_port_range=1024 65000
+    ports:
+      - "5381:5380/tcp" # Web console (HTTP)
+      - "54:53/udp"     # DNS
+      - "54:53/tcp"     # DNS
+    environment:
+      DNS_SERVER_DOMAIN: technitium_2      # The primary domain name used by this DNS Server to identify itself.
+      DNS_SERVER_ADMIN_PASSWORD: password  # DNS web console admin user password.
+    volumes:
+      - technitium_2_config:/etc/dns
+
+volumes:
+    technitium_1_config:
+    technitium_2_config:

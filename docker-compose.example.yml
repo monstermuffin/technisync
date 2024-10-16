@@ -3,17 +3,17 @@ services:
   technisync:
     image: ghcr.io/monstermuffin/technisync:latest
     container_name: technisync
+    restart: unless-stopped
     volumes:
-      # - ./config.yaml:./config.yaml
+      # - ./config.yaml:/app/config.yaml
       - ./data:/data
     environment:
-      - SYNC_INTERVAL=600
-      - DB_PATH=/data/dns_sync.db
-      - LOG_LEVEL=INFO
-      - SYNC_REVERSE_ZONES=true
-      - ZONES_TO_SYNC=example.com,example.org
-      - SERVER1_URL=http://dns1.example.com:5380
-      - SERVER1_API_KEY=api_key
-      - SERVER2_URL=http://dns2.example.com:5380
-      - SERVER2_API_KEY=api_key
-    restart: unless-stopped
+      SYNC_INTERVAL: 600
+      DB_PATH: /data/dns_sync.db
+      LOG_LEVEL: INFO
+      SYNC_REVERSE_ZONES: true
+      ZONES_TO_SYNC: example.com,example.org
+      SERVER1_URL: http://dns1.example.com:5380
+      SERVER1_API_KEY: api_key
+      SERVER2_URL: http://dns2.example.com:5380
+      SERVER2_API_KEY: api_key
